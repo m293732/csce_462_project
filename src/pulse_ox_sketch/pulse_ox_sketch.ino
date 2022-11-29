@@ -8,24 +8,28 @@
 
 #include <Adafruit_AS7341.h>
 
-#define DATA_PTS 24
-#define RED_LED 5
-#define IR_LED 9
-#define light_max 9000
+#define DATA_PTS    60
+#define RED_LED     5
+#define IR_LED      9
+#define light_max   18000
+#define NUM_RVALS   12
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define SCREEN_WIDTH   128 // OLED display width, in pixels
+#define SCREEN_HEIGHT  32 // OLED display height, in pixels
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define SCREEN_ADDRESS 0x3C
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
 Adafruit_AS7341 as7341;
-unsigned long time;
-uint16_t readings[12];
-uint16_t data[DATA_PTS][2];
 
-bool waiting = true;
+unsigned long  time;
+uint16_t       readings[12];
+float          rvalues[NUM_RVALS];
+
+int    rval_count      = 0;
+bool   rval_count_full = false;
+
+bool   waiting = true;
 
 void setup() {
   // Wait for communication with the host computer serial monitor
@@ -46,8 +50,8 @@ void setup() {
   }
   Serial.println("Configuring AS7341");
   as7341.setATIME(29);
-  //as7341.setASTEP(599);
-  as7341.setASTEP(299);
+  as7341.setASTEP(599);
+  //as7341.setASTEP(74);
   as7341.setGain(AS7341_GAIN_512X);
 
   pinMode(RED_LED, OUTPUT);
@@ -77,37 +81,37 @@ void printReadings(const uint16_t* readings){
     Serial.println(readings[11]);
 }
 
-void updateDisplay(double spo2,double rval, uint16_t red, uint16_t nir){
+void updateDisplay(double spo2,double rval, uint16_t red_min, uint16_t red_max, uint16_t nir_min, uint16_t nir_max){
   display.clearDisplay();
 
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(SSD1306_WHITE); // Draw white text
-  display.setCursor(0, 4);     // Start at top-left corner
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 2);
   display.cp437(true);
-  //display.print("Heart Rate: ");
-  //display.println(hr);
-  display.print("SpO2: ");
-  display.println(spo2);
+  /*display.print("SpO2: ");*/
+  /*display.println(spo2);*/
   display.print("RVal: ");
   display.println(rval);
-  display.print("Light: ");
-  display.print(red);
+  display.print("Red: ");
+  display.print(red_min);
   display.print("/");
-  display.println(nir);
+  display.println(red_max);
+  display.print("NIR: ");
+  display.print(nir_min);
+  display.print("/");
+  display.println(nir_max);
   display.display();
 }
 void printDisplay(char line[]){
   display.clearDisplay();
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(SSD1306_WHITE); // Draw white text
-  display.setCursor(0, 4);     // Start at top-left corner
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 4);
   display.cp437(true);
   display.println(line);
   display.display();
 }
 void loop() {
-  setLED(IR_LED,1);
-  setLED(RED_LED,1);
   time = millis();
   // collect data set
   uint16_t ir_min = light_max;
@@ -115,83 +119,108 @@ void loop() {
   uint16_t red_min = light_max;
   uint16_t red_max = 0;
   
+  
+  // turn on LED
+  setLED(IR_LED,1);
+  setLED(RED_LED,1);
+
   for (int i = 0; i < DATA_PTS; i++){
-    
     // read ir led light levels
-    setLED(IR_LED,1);
-    delay(5);
     if (!as7341.readAllChannels(readings)){
       Serial.println("Error reading channels!");
       return;
     }
-    setLED(IR_LED,0);
-    data[i][1] = readings[11]; // NIR
-
-    // read red led light levels
-    setLED(RED_LED,1);
-    delay(5);
-    if (!as7341.readAllChannels(readings)){
-      Serial.println("Error reading channels!");
-      return;
-    }
-    setLED(RED_LED,0);
-    data[i][0] = readings[8];  // 630 nm
-
     // check if no light was absorbed
-    if (data[i][0] == light_max || data[i][1] == light_max){
+    if (readings[AS7341_CHANNEL_630nm_F7] == light_max || readings[AS7341_CHANNEL_NIR] == light_max){
       printDisplay("No finger detected");
       waiting = true;
-      delay(100);
+      rval_count_full = false;
+      rval_count = 0;
+      delay(1000);
       return;
     }
+    // display collecting data if nothing else to display
     if (waiting){
       printDisplay("Collecting data...");
       waiting = false;
     }
-    if(data[i][0] > red_max){
-      red_max = data[i][0];
-    }
-    if(data[i][0] < red_min){
-      red_min = data[i][0];
-    }
 
-    if(data[i][1] > ir_max){
-      ir_max = data[i][1];
+    // set min/max for both wavelengths
+    if(readings[AS7341_CHANNEL_630nm_F7] > red_max){
+      red_max = readings[AS7341_CHANNEL_630nm_F7];
     }
-    if(data[i][1] < ir_min){
-      ir_min = data[i][1];
+    if(readings[AS7341_CHANNEL_630nm_F7] < red_min){
+      red_min = readings[AS7341_CHANNEL_630nm_F7];
     }
-    //updateDisplay(hr_avg, 1, data[i][0], data[i][1]);
-    //delay(10);
+    if(readings[AS7341_CHANNEL_NIR] > ir_max){
+      ir_max = readings[AS7341_CHANNEL_NIR];
+    }
+    if(readings[AS7341_CHANNEL_NIR] < ir_min){
+      ir_min = readings[AS7341_CHANNEL_NIR];
+    }
   }
-  
+  // turn off LED
+  setLED(IR_LED,0);
+  setLED(RED_LED,0);
+
+  // measure time elapsed since start of data collection
   time = millis() - time;
+  // output read rate in reads per second
   Serial.print("Read Rate : ");
-  double rps = (double)DATA_PTS / ((double)time/ (double)1000);
+  float rps = (float)DATA_PTS / ((float)time/ (float)1000);
   Serial.println(rps);
-  
-  // analyze data
-  uint16_t red_avg = 0;
-  uint16_t ir_avg = 0;
-  for (int i = 0; i < DATA_PTS; i++){
-    red_avg += data[i][0] / DATA_PTS;
-    ir_avg += data[i][1] / DATA_PTS;
-  }
 
+  // analyze data
+  /*uint16_t red_avg = 0;*/
+  /*uint16_t ir_avg = 0;*/
+  /*for (int i = 0; i < DATA_PTS; i++){*/
+    /*red_avg += readings[AS7341_CHANNEL_630nm_F7] / DATA_PTS;*/
+    /*ir_avg += readings[AS7341_CHANNEL_NIR] / DATA_PTS;*/
+  /*}*/
+
+  // output r value components
+  Serial.print("(");
   Serial.print((float)red_min);
   Serial.print(" / ");
   Serial.print((float)red_max);
-  Serial.print(" / ");
+  Serial.print(") / (");
   Serial.print((float)ir_min);
   Serial.print(" / ");
   Serial.println((float)ir_max);
-  float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
-  Serial.print("rval:");
-  Serial.println(rval);
-  float spo2 = rval * .7 * -.3333 + 1.27;
+  Serial.println(")");
 
-  Serial.print("spo2: ");
-  Serial.println(spo2);
-  updateDisplay(spo2, rval, red_avg, ir_avg);
+  // calc r value
+  float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
+  // convert to value that is easier to read
+  rval = (1.0 - rval) * 100;
+  rvalues[rval_count] = rval;
+  rval_count = (rval_count + 1) % NUM_RVALS;
+  if (rval_count == 0){
+    rval_count_full = true;
+  }
+
+  // calculate average r value
+  float rval_avg = 0;
+  if (rval_count_full){
+    for (int i = 0; i < NUM_RVALS; i++){
+      rval_avg += rvalues[i];
+    }
+    rval_avg /= NUM_RVALS;
+  }
+  else {
+    for (int i = 0; i < rval_count; i++){
+      rval_avg += rvalues[i];
+    }
+    rval_avg /= rval_count;
+  }
+
+  Serial.print("rval:");
+  Serial.println(rval_avg);
+
+  // calc spo2 from rval
+  //float spo2 = rval * .7 * -.3333 + 1.27;
+  //Serial.print("spo2: ");
+  //Serial.println(spo2);
+  updateDisplay(0, rval, red_avg, ir_avg);
 
 }
