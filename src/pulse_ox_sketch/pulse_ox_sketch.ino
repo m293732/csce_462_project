@@ -12,7 +12,7 @@
 #define RED_LED     5
 #define IR_LED      9
 #define light_max   18000
-#define NUM_RVALS   12
+#define NUM_RVALS   6
 
 #define SCREEN_WIDTH   128 // OLED display width, in pixels
 #define SCREEN_HEIGHT  32 // OLED display height, in pixels
@@ -49,6 +49,7 @@ void setup() {
     while (1) { delay(10); }
   }
   Serial.println("Configuring AS7341");
+  as7341.enableLED(false);
   as7341.setATIME(29);
   as7341.setASTEP(599);
   //as7341.setASTEP(74);
@@ -60,7 +61,7 @@ void setup() {
   digitalWrite(IR_LED, LOW);
   //pinMode(4, OUTPUT);
 
-  display.display();
+  //display.display();
   //delay(2000); // Pause for 2 seconds
 
   
@@ -93,13 +94,13 @@ void updateDisplay(double spo2,double rval, uint16_t red_min, uint16_t red_max, 
   display.print("RVal: ");
   display.println(rval);
   display.print("Red: ");
-  display.print(red_min);
+  display.print(red_max);
   display.print("/");
-  display.println(red_max);
+  display.println(red_min);
   display.print("NIR: ");
-  display.print(nir_min);
+  display.print(nir_max);
   display.print("/");
-  display.println(nir_max);
+  display.println(nir_min);
   display.display();
 }
 void printDisplay(char line[]){
@@ -143,6 +144,8 @@ void loop() {
     if (waiting){
       printDisplay("Collecting data...");
       waiting = false;
+      
+      return;
     }
 
     // set min/max for both wavelengths
@@ -178,21 +181,16 @@ void loop() {
     /*ir_avg += readings[AS7341_CHANNEL_NIR] / DATA_PTS;*/
   /*}*/
 
-  // output r value components
-  Serial.print("(");
-  Serial.print((float)red_min);
-  Serial.print(" / ");
-  Serial.print((float)red_max);
-  Serial.print(") / (");
-  Serial.print((float)ir_min);
-  Serial.print(" / ");
-  Serial.println((float)ir_max);
-  Serial.println(")");
+  
 
+  float a_red_max = ((float)light_max / (float)red_max);
+  float a_red_min = ((float)light_max / (float)red_min);
+  float a_ir_max  = ((float)light_max / (float)ir_max);
+  float a_ir_min  = ((float)light_max / (float)ir_min);
+  //float rval = log(a_red_max/a_red_min) / log(a_ir_max/a_ir_min);
   // calc r value
   float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
-  // convert to value that is easier to read
-  rval = (1.0 - rval) * 100;
+  
   rvalues[rval_count] = rval;
   rval_count = (rval_count + 1) % NUM_RVALS;
   if (rval_count == 0){
@@ -213,7 +211,20 @@ void loop() {
     }
     rval_avg /= rval_count;
   }
-
+  // convert to value that is easier to read
+  rval_avg = (1.0 - rval_avg) * 100;
+  //rval_avg = rval_avg * 100;
+  
+  // output r value components
+  Serial.print("(");
+  Serial.print((float)a_red_min);
+  Serial.print(" / ");
+  Serial.print((float)a_red_max);
+  Serial.print(") / (");
+  Serial.print((float)a_ir_min);
+  Serial.print(" / ");
+  Serial.print((float)a_ir_max);
+  Serial.println(")");
   Serial.print("rval:");
   Serial.println(rval_avg);
 
@@ -221,6 +232,6 @@ void loop() {
   //float spo2 = rval * .7 * -.3333 + 1.27;
   //Serial.print("spo2: ");
   //Serial.println(spo2);
-  updateDisplay(0, rval, red_avg, ir_avg);
+  updateDisplay(0, rval_avg, red_min, red_max, ir_min, ir_max);
 
 }
