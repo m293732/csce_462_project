@@ -73,15 +73,35 @@ void setLED(int led, int state){
   digitalWrite(led, state);
 }
 void printReadings(const uint16_t* readings){
-  // print a few wavelength ranges
-    Serial.print("630nm      : ");
-    //Serial.println(1.00 - (float)readings[8] / (float)18000);
-    Serial.println(readings[8]);
-    Serial.print("ADC2/F8 680nm     : ");
-    Serial.println(readings[9]);
-    Serial.print("NIR        : ");
-    //Serial.println(1.00 - (float)readings[11] / (float)18000);
-    Serial.println(readings[11]);
+  Serial.print("ADC0/F1 415nm : ");
+  Serial.println(readings[0]);
+  Serial.print("ADC1/F2 445nm : ");
+  Serial.println(readings[1]);
+  Serial.print("ADC2/F3 480nm : ");
+  Serial.println(readings[2]);
+  Serial.print("ADC3/F4 515nm : ");
+  Serial.println(readings[3]);
+  Serial.print("ADC0/F5 555nm : ");
+
+  /*
+  // we skip the first set of duplicate clear/NIR readings
+  Serial.print("ADC4/Clear-");
+  Serial.println(readings[4]);
+  Serial.print("ADC5/NIR-");
+  Serial.println(readings[5]);
+  */
+
+  Serial.println(readings[6]);
+  Serial.print("ADC1/F6 590nm : ");
+  Serial.println(readings[7]);
+  Serial.print("ADC2/F7 630nm : ");
+  Serial.println(readings[8]);
+  Serial.print("ADC3/F8 680nm : ");
+  Serial.println(readings[9]);
+  Serial.print("ADC4/Clear    : ");
+  Serial.println(readings[10]);
+  Serial.print("ADC5/NIR      : ");
+  Serial.println(readings[11]);
 }
 
 void updateDisplay(double spo2,double rval, uint16_t red_min, uint16_t red_max, uint16_t nir_min, uint16_t nir_max){
@@ -135,6 +155,7 @@ void loop() {
       Serial.println("Error reading channels!");
       return;
     }
+    //printReadings(readings);
     // check if no light was absorbed
     if (readings[AS7341_CHANNEL_630nm_F7] == light_max || readings[AS7341_CHANNEL_NIR] == light_max){
       printDisplay("No finger detected");
@@ -195,6 +216,10 @@ void loop() {
   // calc r value
   //float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
   
+  // discard bad reads
+  //if ( (1-rval) * 100 < -5.9){
+  //  return;
+  //}
   rvalues[rval_count] = rval;
   rval_count = (rval_count + 1) % NUM_RVALS;
   if (rval_count == 0){
@@ -237,6 +262,6 @@ void loop() {
   float spo2 = 4.5 * log(-rval_avg) + 92;
   Serial.print("spo2: ");
   Serial.println(spo2);
-  updateDisplay(spo2, rval_avg, red_min, red_max, ir_min, ir_max);
+  updateDisplay(min(spo2,99.9), rval_avg, red_min, red_max, ir_min, ir_max);
 
 }
