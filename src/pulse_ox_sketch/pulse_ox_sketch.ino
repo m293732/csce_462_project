@@ -22,6 +22,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Adafruit_AS7341 as7341;
 
+int RVAL_FRAC[] = {2,4,8,16,32,32};
+
 unsigned long  time;
 uint16_t       readings[12];
 float          rvalues[NUM_RVALS];
@@ -89,10 +91,11 @@ void updateDisplay(double spo2,double rval, uint16_t red_min, uint16_t red_max, 
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 2);
   display.cp437(true);
-  /*display.print("SpO2: ");*/
-  /*display.println(spo2);*/
+  display.print("SpO2: ");
+  display.println(spo2);
   display.print("RVal: ");
   display.println(rval);
+  /*
   display.print("Red: ");
   display.print(red_max);
   display.print("/");
@@ -101,6 +104,7 @@ void updateDisplay(double spo2,double rval, uint16_t red_min, uint16_t red_max, 
   display.print(nir_max);
   display.print("/");
   display.println(nir_min);
+  */
   display.display();
 }
 void printDisplay(char line[]){
@@ -183,13 +187,13 @@ void loop() {
 
   
 
-  float a_red_max = ((float)light_max / (float)red_max);
-  float a_red_min = ((float)light_max / (float)red_min);
-  float a_ir_max  = ((float)light_max / (float)ir_max);
-  float a_ir_min  = ((float)light_max / (float)ir_min);
-  //float rval = log(a_red_max/a_red_min) / log(a_ir_max/a_ir_min);
+  float a_red_max = log((float)light_max / (float)red_max);
+  float a_red_min = log((float)light_max / (float)red_min);
+  float a_ir_max  = log((float)light_max / (float)ir_max);
+  float a_ir_min  = log((float)light_max / (float)ir_min);
+  float rval = (a_red_max/a_red_min) / (a_ir_max/a_ir_min);
   // calc r value
-  float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
+  //float rval = ((float)red_min/(float)red_max) / ((float)ir_min/(float)ir_max);
   
   rvalues[rval_count] = rval;
   rval_count = (rval_count + 1) % NUM_RVALS;
@@ -200,10 +204,10 @@ void loop() {
   // calculate average r value
   float rval_avg = 0;
   if (rval_count_full){
-    for (int i = 0; i < NUM_RVALS; i++){
-      rval_avg += rvalues[i];
+    for (int i = rval_count; i < rval_count + NUM_RVALS; i++){
+      rval_avg += rvalues[i % NUM_RVALS] * (1.0 / (float) RVAL_FRAC[i - rval_count]);
     }
-    rval_avg /= NUM_RVALS;
+    //rval_avg /= NUM_RVALS;
   }
   else {
     for (int i = 0; i < rval_count; i++){
@@ -217,11 +221,11 @@ void loop() {
   
   // output r value components
   Serial.print("(");
-  Serial.print((float)a_red_min);
-  Serial.print(" / ");
   Serial.print((float)a_red_max);
+  Serial.print(" / ");
+  Serial.print((float)a_red_min);
   Serial.print(") / (");
-  Serial.print((float)a_ir_min);
+  Serial.print((float)a_ir_max);
   Serial.print(" / ");
   Serial.print((float)a_ir_max);
   Serial.println(")");
@@ -230,8 +234,9 @@ void loop() {
 
   // calc spo2 from rval
   //float spo2 = rval * .7 * -.3333 + 1.27;
-  //Serial.print("spo2: ");
-  //Serial.println(spo2);
-  updateDisplay(0, rval_avg, red_min, red_max, ir_min, ir_max);
+  float spo2 = 4.5 * log(-rval_avg) + 92;
+  Serial.print("spo2: ");
+  Serial.println(spo2);
+  updateDisplay(spo2, rval_avg, red_min, red_max, ir_min, ir_max);
 
 }
